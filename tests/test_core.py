@@ -12,12 +12,9 @@ from rubicon.objc import (
     ObjCClass, ObjCInstance, ObjCMetaClass, ObjCProtocol, at, objc_classmethod, objc_const, objc_ivar, objc_method,
     objc_property, py_from_ns, send_message, send_super, types,
 )
-from rubicon.objc.runtime import get_ivar, libobjc, objc_id, set_ivar
+from rubicon.objc.runtime import get_ivar, libobjc, objc_id, set_ivar, autoreleasepool
 
 from . import OSX_VERSION, rubiconharness
-
-
-NSAutoreleasePool = ObjCClass("NSAutoreleasePool")
 
 
 class struct_int_sized(Structure):
@@ -1223,38 +1220,34 @@ class RubiconTest(unittest.TestCase):
     def test_objcinstance_python_attribute_freed(self):
         """Python attributes on an ObjCInstance are freed after the instance is released."""
 
-        # create NSAutoreleasePool to clean up any leftover Obj-C instances
-        pool = NSAutoreleasePool.alloc().init()
+        with autoreleasepool():
 
-        obj = NSObject.alloc().init()
+            obj = NSObject.alloc().init()
 
-        # Use a custom object as attribute value so that we can keep a weak reference.
+            # Use a custom object as attribute value so that we can keep a weak reference.
 
-        class TestO:
-            pass
+            class TestO:
+                pass
 
-        python_object = TestO()
+            python_object = TestO()
 
-        wr_python_object = weakref.ref(python_object)
+            wr_python_object = weakref.ref(python_object)
 
-        # Add our Python attribute to the Objective-C object.
-        obj.python_object = python_object
+            # Add our Python attribute to the Objective-C object.
+            obj.python_object = python_object
 
-        # Delete all of Python references to the Python object.
-        del python_object
+            # Delete all of Python references to the Python object.
+            del python_object
 
-        # Try to force Python to destroy any no longer referenced objects.
-        gc.collect()
+            # Try to force Python to destroy any no longer referenced objects.
+            gc.collect()
 
-        # Check that our Python attributes are still there.
-        self.assertIs(obj.python_object, wr_python_object())
+            # Check that our Python attributes are still there.
+            self.assertIs(obj.python_object, wr_python_object())
 
-        # Delete ObjCInstances and check that all Python objects are freed.
-
-        del obj
-        del pool
-
-        gc.collect()
+            # Make sure that all Python objects are freed.
+            del obj
+            gc.collect()
 
         self.assertIsNone(wr_python_object())
 
